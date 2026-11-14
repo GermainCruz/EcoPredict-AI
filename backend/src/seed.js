@@ -1,0 +1,3 @@
+import 'dotenv/config';import bcrypt from 'bcryptjs';import {query,pool} from './config/db.js';
+const email=process.env.SEED_ADMIN_EMAIL,password=process.env.SEED_ADMIN_PASSWORD;if(!email||!password||password.length<10||password.startsWith('CAMBIAR'))throw new Error('Configure SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD (min. 10 caracteres) en .env');
+try{const hash=await bcrypt.hash(password,12);const x=await query("INSERT INTO users(role_id,full_name,email,password_hash) VALUES((SELECT id FROM roles WHERE name='admin'),'Administrador',lower($1),$2) ON CONFLICT(email) DO NOTHING RETURNING id",[email,hash]);console.log(x.rowCount?'Cuenta administradora creada':'Ya existe cuenta con ese email (no se modificó)');}finally{await pool.end();}
