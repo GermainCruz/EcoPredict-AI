@@ -24,7 +24,7 @@ try {
         & $psql -h localhost -U postgres -d postgres -w -v ON_ERROR_STOP=1 -f database/scripts/01_create_database.sql
         Check-Exit
     }
-    foreach ($file in @('02_schema.sql', '03_catalogs.sql')) {
+    foreach ($file in @('02_schema.sql', '03_catalogs.sql', '05_improvements.sql')) {
         & $psql -h localhost -U postgres -d ecopredict_db -w -v ON_ERROR_STOP=1 -f "database/scripts/$file"
         Check-Exit
     }

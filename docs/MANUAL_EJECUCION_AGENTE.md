@@ -49,7 +49,7 @@ Desde la carpeta que contiene el `package.json` principal:
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
 ```
 
-El script instala dependencias, solicita la contraseña de `postgres` sin mostrarla, crea `ecopredict_db` si falta, aplica esquema y catálogos, genera los `.env` ausentes, crea el administrador, ejecuta pruebas y compilación e inicia ambos servicios en segundo plano. Abre el navegador después de comprobar HTTP.
+El script instala dependencias, solicita la contraseña de `postgres` sin mostrarla, crea `ecopredict_db` si falta, aplica esquema, catálogos y la migración de mejoras, genera los `.env` ausentes, crea el administrador, ejecuta pruebas y compilación e inicia ambos servicios en segundo plano. Abre el navegador después de comprobar HTTP.
 
 El parámetro `ExecutionPolicy Bypass` se aplica al proceso invocado; no es necesario cambiar permanentemente la política de ejecución.
 
@@ -69,7 +69,10 @@ Los siguientes comandos suponen que `psql` está en PATH. Si no lo está, antepo
 psql -h localhost -U postgres -d postgres -W -v ON_ERROR_STOP=1 -f database/scripts/01_create_database.sql
 psql -h localhost -U postgres -d ecopredict_db -W -v ON_ERROR_STOP=1 -f database/scripts/02_schema.sql
 psql -h localhost -U postgres -d ecopredict_db -W -v ON_ERROR_STOP=1 -f database/scripts/03_catalogs.sql
+psql -h localhost -U postgres -d ecopredict_db -W -v ON_ERROR_STOP=1 -f database/scripts/05_improvements.sql
 ```
+
+El script `05_improvements.sql` es idempotente y añade unicidad de mediciones, el puntaje de anomalías, el paso de horizonte y las tablas de reglas y alertas. Puede ejecutarse nuevamente sin efectos secundarios.
 
 Si `ecopredict_db` ya existe, omitir el primer comando. No borrarla para resolver ese mensaje. Para cualquier comando que falle, detenerse y resolver el error antes del siguiente paso.
 
@@ -111,7 +114,7 @@ npm.cmd test --prefix backend
 npm.cmd run build --prefix frontend
 ```
 
-Ejecutar en ese orden y comprobar que cada comando termine correctamente. Se esperan cinco pruebas del predictor aprobadas y una compilación del frontend sin errores. El comando `build` genera archivos estáticos; no inicia los servidores.
+Ejecutar en ese orden y comprobar que cada comando termine correctamente. Se esperan dieciséis pruebas del backend aprobadas (predicción y anomalías) y una compilación del frontend sin errores. El comando `build` genera archivos estáticos; no inicia los servidores.
 
 ## 5. Arranque habitual y parada
 
@@ -158,9 +161,9 @@ Comprobar inicio de sesión, apertura del dashboard y consulta de catálogos. Un
 ## 7. Uso básico y demostración opcional
 
 1. Consultar o crear estaciones y variables en Catálogos con la cuenta administradora.
-2. Registrar mediciones indicando estación, variable, fecha, valor, procedencia y calidad.
-3. Consultar indicadores y series en el dashboard.
-4. Ejecutar predicciones con al menos 30 observaciones válidas, de fechas distintas, de la misma estación y variable. Revisar MAE, RMSE, R² y comparación con persistencia.
+2. Registrar mediciones indicando estación, variable, fecha, valor, procedencia y calidad; también pueden importarse archivos CSV o Excel.
+3. Consultar indicadores y series en el dashboard, el mapa de calor y el mapa de estaciones; gestionar alertas y sus reglas.
+4. Ejecutar predicciones con al menos 30 observaciones válidas, de fechas distintas, de la misma estación y variable, ajustando horizonte y pliegues. Revisar MAE, RMSE, R², sMAPE, la validación walk-forward y la comparación con persistencia.
 5. Exportar reportes PDF, Word o Excel y consultar la auditoría como administrador.
 
 Para una demostración en una base de desarrollo, después del seed puede cargarse la serie incluida:

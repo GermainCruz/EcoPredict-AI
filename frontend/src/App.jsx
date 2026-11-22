@@ -12,24 +12,39 @@ import {
   MapPinned,
   Menu,
   UserCheck,
+  BellRing,
+  Map as MapIcon,
+  ClipboardCheck,
+  LineChart,
+  UserCog,
 } from 'lucide-react';
 import { api, session } from './lib/api';
 import Dashboard from './pages/Dashboard';
 import Measurements from './pages/Measurements';
 import Predictions from './pages/Predictions';
+import Alerts from './pages/Alerts';
+import Quality from './pages/Quality';
+import Analytics from './pages/Analytics';
+import MapPage from './pages/Map';
 import Reports from './pages/Reports';
 import UsersPage from './pages/Users';
 import Catalogs from './pages/Catalogs';
 import Audit from './pages/Audit';
+import Profile from './pages/Profile';
 
 const navigation = [
   ['/dashboard', 'Resumen', LayoutDashboard],
   ['/measurements', 'Mediciones', Database],
   ['/predictions', 'Predicciones IA', BrainCircuit],
+  ['/alerts', 'Alertas', BellRing],
+  ['/quality', 'Calidad de datos', ClipboardCheck],
+  ['/analytics', 'Analítica', LineChart],
+  ['/map', 'Mapa de estaciones', MapIcon],
   ['/reports', 'Reportes', FileText],
   ['/catalogs', 'Estaciones y variables', MapPinned],
   ['/users', 'Usuarios', Users],
   ['/audit', 'Auditoría', ShieldCheck],
+  ['/profile', 'Mi perfil', UserCog],
 ];
 
 const QUICK_USERS = [
@@ -46,7 +61,7 @@ export default function App() {
 
   async function logout() {
     try {
-      await api('/auth/logout', { method: 'POST', body: { refreshToken: auth.refreshToken } });
+      await api('/auth/logout', { method: 'POST', body: {} });
     } catch {}
     session.clear();
     setAuth(null);
@@ -127,8 +142,13 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/measurements" element={<Measurements role={auth.user.role} />} />
             <Route path="/predictions" element={<Predictions />} />
+            <Route path="/alerts" element={<Alerts role={auth.user.role} />} />
+            <Route path="/quality" element={<Quality />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/map" element={<MapPage />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/catalogs" element={<Catalogs role={auth.user.role} />} />
+            <Route path="/profile" element={<Profile onLogout={logout} />} />
             <Route
               path="/users"
               element={auth.user.role === 'admin' ? <UsersPage /> : <Navigate to="/dashboard" />}

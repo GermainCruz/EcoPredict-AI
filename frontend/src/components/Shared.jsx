@@ -5,15 +5,22 @@ import { api } from '../lib/api';
 export function useRequest(path) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(path));
   const reload = () => {
+    // Un path nulo/ vacío indica "aún no hay parámetros suficientes": no se consulta.
+    if (!path) {
+      setData(null);
+      setError('');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     api(path)
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
-  useEffect(reload, [path]);
+  useEffect(reload, [path]); // eslint-disable-line react-hooks/exhaustive-deps
   return { data, error, loading, reload };
 }
 

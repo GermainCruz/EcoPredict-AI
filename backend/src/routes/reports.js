@@ -10,6 +10,7 @@ import {
   BorderStyle,
   Document,
   HeadingLevel,
+  ImageRun,
   Packer,
   Paragraph,
   ShadingType,
@@ -19,6 +20,7 @@ import {
   TextRun,
   WidthType,
 } from 'docx';
+import { renderLineChart } from '../utils/chart-png.js';
 
 const r = Router();
 r.use(authenticate);
@@ -54,6 +56,7 @@ async function dataset(req) {
       variable_id: z.coerce.number().int().positive().optional(),
       from: z.string().datetime({ offset: true }).optional(),
       to: z.string().datetime({ offset: true }).optional(),
+      graph: z.enum(['0', '1']).default('1'),
     })
     .parse(req.query);
 
@@ -74,7 +77,33 @@ async function dataset(req) {
     )
   ).rows;
 
-  return { rows, filters: f };
+  return { rows, filters: { ...f, graph: f.graph === '1' } };
+}
+
+// P2 #20: puntos para el gráfico del reporte. Si hay filtro de variable se
+// grafica el promedio diario (misma unidad); en caso contrario, el conteo diario.
+function buildChartPoints(rows, filters) {
+  const byDay = new Map();
+  for (const row of rows) {
+    const day = new Date(row.measured_at).toISOString().slice(0, 10);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(Number(row.value));
+  }
+  const days = [...byDay.keys()].sort();
+  if (filters.variable_id && days.length) {
+    const sample = rows[0];
+    return {
+      caption: `Tendencia diaria — ${sample.variable} (${sample.unit})`,
+      points: days.map((d) => ({
+        x: d,
+        y: byDay.get(d).reduce((a, b) => a + b, 0) / byDay.get(d).length,
+      })),
+    };
+  }
+  return {
+    caption: 'Registros por día',
+    points: days.map((d) => ({ x: d, y: byDay.get(d).length })),
+  };
 }
 
 function summarize(rows) {
@@ -123,7 +152,7 @@ function filterDescription(filters) {
   return parts.length ? parts.join(' | ') : 'Todas las estaciones y variables';
 }
 
-function generatePdf(res, rows, filters, summary) {
+function generatePdf(res, rows, filters, summary, chart) {
   res.type('application/pdf');
   const doc = new PDFDocument({ margin: 36, size: 'A4', bufferPages: true });
   doc.pipe(res);
@@ -175,6 +204,16 @@ function generatePdf(res, rows, filters, summary) {
     );
 
   let y = 226;
+
+  // P2 #20: gráfico de tendencia embebido.
+  if (chart && chart.points.length) {
+    doc.fillColor(dark).font('Helvetica-Bold').fontSize(11).text(chart.caption, 36, y);
+    y += 16;
+    const imgW = pageWidth;
+    const imgH = Math.round(imgW * (420 / 1400));
+    doc.image(chart.buffer, 36, y, { width: imgW });
+    y += imgH + 18;
+  }
 
   // Summary by variable
   if (summary.byVariable.length) {
@@ -461,7 +500,7 @@ async function generateXlsx(res, rows, filters, summary) {
   res.end();
 }
 
-async function generateDocx(res, rows, filters, summary) {
+async function generateDocx(res, rows, filters, summary, chart) {
   const cellBorders = {
     top: { style: BorderStyle.SINGLE, size: 4, color: 'D6E2DC' },
     bottom: { style: BorderStyle.SINGLE, size: 4, color: 'D6E2DC' },
@@ -608,6 +647,18 @@ async function generateDocx(res, rows, filters, summary) {
             children: [new TextRun({ text: `Filtros: ${filterDescription(filters)}`, color: '5C726A', size: 18 })],
           }),
           noticeBox,
+          ...(chart && chart.points.length
+            ? [
+                new Paragraph({
+                  text: chart.caption,
+                  heading: HeadingLevel.HEADING_2,
+                  spacing: { before: 260, after: 120 },
+                }),
+                new Paragraph({
+                  children: [new ImageRun({ type: 'png', data: chart.buffer, transformation: { width: 600, height: 180 } })],
+                }),
+              ]
+            : []),
           ...(summary.byVariable.length
             ? [
                 new Paragraph({
@@ -660,9 +711,16 @@ r.get(
     const date = new Date().toISOString().slice(0, 10);
     res.set('Content-Disposition', `attachment; filename="ecopredict_${date}.${format}"`);
 
-    if (format === 'pdf') return generatePdf(res, rows, filters, summary);
+    // El gráfico vectorial solo aplica a PDF/DOCX (Excel ya es tabular).
+    let chart = null;
+    if (filters.graph && format !== 'xlsx') {
+      const built = buildChartPoints(rows, filters);
+      chart = built.points.length ? { ...built, buffer: renderLineChart(built.points) } : null;
+    }
+
+    if (format === 'pdf') return generatePdf(res, rows, filters, summary, chart);
     if (format === 'xlsx') return generateXlsx(res, rows, filters, summary);
-    return generateDocx(res, rows, filters, summary);
+    return generateDocx(res, rows, filters, summary, chart);
   })
 );
 

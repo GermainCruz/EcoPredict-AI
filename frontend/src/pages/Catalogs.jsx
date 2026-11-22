@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Power, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
-import { Badge, Heading, Modal, Notice, useRequest } from '../components/Shared';
+import { Badge, ConfirmDialog, Heading, Modal, Notice, useRequest } from '../components/Shared';
 
 const CATEGORY_BADGE = {
   air: { label: 'Aire', tone: 'info' },
@@ -12,10 +12,23 @@ const CATEGORY_BADGE = {
 export default function Catalogs({ role }) {
   const { data: sites, reload: reloadSites } = useRequest('/catalogs/sites');
   const { data: variables, reload: reloadVars } = useRequest('/catalogs/variables');
+  const { data: refThresholds, reload: reloadRef } = useRequest('/reference-thresholds');
 
   const [siteOpen, setSiteOpen] = useState(false);
   const [varOpen, setVarOpen] = useState(false);
+  const [refOpen, setRefOpen] = useState(false);
+  const [deleteRef, setDeleteRef] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  const [refForm, setRefForm] = useState({
+    variable_id: '',
+    label: '',
+    min_value: '',
+    max_value: '',
+    source: '',
+    source_url: '',
+    jurisdiction: '',
+  });
 
   const [site, setSite] = useState({ name: '', latitude: '', longitude: '', description: '' });
   const [variable, setVariable] = useState({
@@ -79,6 +92,67 @@ export default function Catalogs({ role }) {
       }
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitRef(e) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (refForm.min_value === '' && refForm.max_value === '') {
+      setError('Define al menos un valor de referencia (mínimo o máximo).');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/reference-thresholds', {
+        method: 'POST',
+        body: {
+          variable_id: Number(refForm.variable_id),
+          label: refForm.label,
+          min_value: refForm.min_value === '' ? null : Number(refForm.min_value),
+          max_value: refForm.max_value === '' ? null : Number(refForm.max_value),
+          source: refForm.source,
+          source_url: refForm.source_url === '' ? null : refForm.source_url,
+          jurisdiction: refForm.jurisdiction === '' ? null : refForm.jurisdiction,
+        },
+      });
+      setSuccess('Umbral de referencia creado (nueva versión activa).');
+      setRefForm({ variable_id: '', label: '', min_value: '', max_value: '', source: '', source_url: '', jurisdiction: '' });
+      setRefOpen(false);
+      reloadRef();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleRef(r) {
+    setError('');
+    setSuccess('');
+    try {
+      await api('/reference-thresholds/' + r.id, { method: 'PATCH', body: { is_active: !r.is_active } });
+      reloadRef();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function confirmDeleteRef() {
+    if (!deleteRef) return;
+    setError('');
+    setSaving(true);
+    try {
+      await api('/reference-thresholds/' + deleteRef.id, { method: 'DELETE' });
+      setSuccess('Umbral de referencia eliminado.');
+      setDeleteRef(null);
+      reloadRef();
+    } catch (err) {
+      setError(err.message);
+      setDeleteRef(null);
     } finally {
       setSaving(false);
     }
@@ -170,6 +244,96 @@ export default function Catalogs({ role }) {
           </div>
         </section>
       </div>
+
+      <section className="panel mt-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="h2 mb-1">Umbrales de referencia ({refThresholds?.length ?? 0})</h2>
+            <p className="muted text-sm">
+              Valores normativos u orientativos con fuente citada. Son contexto de referencia, no reglas de
+              alerta operativas. Una nueva versión del mismo (variable, etiqueta) desactiva la anterior.
+            </p>
+          </div>
+          {role === 'admin' && (
+            <button
+              type="button"
+              className="btn text-sm py-2 px-3.5"
+              onClick={() => {
+                setError('');
+                setRefOpen(true);
+              }}
+            >
+              <Plus size={16} /> Nuevo umbral
+            </button>
+          )}
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th>Etiqueta</th>
+                <th>Rango</th>
+                <th>Fuente</th>
+                <th>Jurisdicción</th>
+                <th>Versión</th>
+                <th>Estado</th>
+                {role === 'admin' && <th>Acciones</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {refThresholds?.map((r) => (
+                <tr key={r.id}>
+                  <td className="font-semibold text-ink">
+                    {r.variable_name} <span className="muted font-normal">({r.unit})</span>
+                  </td>
+                  <td>{r.label}</td>
+                  <td className="muted text-xs">
+                    {r.min_value !== null ? `≥ ${r.min_value}` : ''}
+                    {r.min_value !== null && r.max_value !== null ? ' – ' : ''}
+                    {r.max_value !== null ? `≤ ${r.max_value}` : ''}
+                  </td>
+                  <td className="max-w-[240px] truncate muted" title={r.source}>
+                    {r.source_url ? (
+                      <a className="text-leaf underline" href={r.source_url} target="_blank" rel="noreferrer">
+                        {r.source}
+                      </a>
+                    ) : (
+                      r.source
+                    )}
+                  </td>
+                  <td>{r.jurisdiction || '—'}</td>
+                  <td>v{r.version}</td>
+                  <td>
+                    <Badge tone={r.is_active ? 'success' : 'neutral'}>{r.is_active ? 'Activo' : 'Inactivo'}</Badge>
+                  </td>
+                  {role === 'admin' && (
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-leaf bg-emerald-50 hover:bg-emerald-100"
+                          onClick={() => toggleRef(r)}
+                        >
+                          <Power size={13} /> {r.is_active ? 'Desactivar' : 'Activar'}
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100"
+                          onClick={() => setDeleteRef(r)}
+                        >
+                          <Trash2 size={13} /> Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!refThresholds?.length && <p className="muted p-4">Aún no hay umbrales de referencia registrados.</p>}
+        </div>
+      </section>
 
       <Modal
         open={siteOpen}
@@ -269,6 +433,117 @@ export default function Catalogs({ role }) {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        open={refOpen}
+        title="Nuevo umbral de referencia"
+        subtitle="Documenta el valor normativo con su fuente citada. Se guarda como una nueva versión activa."
+        onClose={() => setRefOpen(false)}
+        maxWidth="max-w-lg"
+      >
+        <form className="grid sm:grid-cols-2 gap-4" onSubmit={submitRef}>
+          <div className="sm:col-span-2">
+            <label>Variable</label>
+            <select
+              required
+              className="form-field"
+              value={refForm.variable_id}
+              onChange={(e) => setRefForm((f) => ({ ...f, variable_id: e.target.value }))}
+            >
+              <option value="">Seleccionar</option>
+              {variables?.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.unit})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label>Etiqueta</label>
+            <input
+              required
+              className="form-field"
+              placeholder="Ej. Directriz OMS - media 24h"
+              value={refForm.label}
+              onChange={(e) => setRefForm((f) => ({ ...f, label: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label>Valor mínimo</label>
+            <input
+              type="number"
+              step="any"
+              className="form-field"
+              value={refForm.min_value}
+              onChange={(e) => setRefForm((f) => ({ ...f, min_value: e.target.value }))}
+              placeholder="Sin mínimo"
+            />
+          </div>
+          <div>
+            <label>Valor máximo</label>
+            <input
+              type="number"
+              step="any"
+              className="form-field"
+              value={refForm.max_value}
+              onChange={(e) => setRefForm((f) => ({ ...f, max_value: e.target.value }))}
+              placeholder="Sin máximo"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label>Fuente</label>
+            <input
+              required
+              className="form-field"
+              placeholder="Ej. OMS 2021 (Global air quality guidelines)"
+              value={refForm.source}
+              onChange={(e) => setRefForm((f) => ({ ...f, source: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label>URL de la fuente (opcional)</label>
+            <input
+              type="url"
+              className="form-field"
+              placeholder="https://…"
+              value={refForm.source_url}
+              onChange={(e) => setRefForm((f) => ({ ...f, source_url: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label>Jurisdicción (opcional)</label>
+            <input
+              className="form-field"
+              placeholder="Ej. Internacional"
+              value={refForm.jurisdiction}
+              onChange={(e) => setRefForm((f) => ({ ...f, jurisdiction: e.target.value }))}
+            />
+          </div>
+          <div className="sm:col-span-2 flex justify-end gap-2.5 pt-2">
+            <button type="button" className="btn-secondary" onClick={() => setRefOpen(false)} disabled={saving}>
+              Cancelar
+            </button>
+            <button className="btn" disabled={saving}>
+              {saving ? 'Guardando...' : 'Crear umbral'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deleteRef)}
+        title="Eliminar umbral de referencia"
+        message={
+          deleteRef
+            ? `¿Eliminar el umbral "${deleteRef.label}" de ${deleteRef.variable_name}? Esta acción quedará registrada en auditoría.`
+            : ''
+        }
+        confirmLabel="Sí, eliminar"
+        danger
+        loading={saving}
+        onConfirm={confirmDeleteRef}
+        onCancel={() => setDeleteRef(null)}
+      />
     </>
   );
 }
