@@ -17,6 +17,7 @@ import profile from './routes/profile.js';
 import quality from './routes/quality.js';
 import analytics from './routes/analytics.js';
 import reference from './routes/reference.js';
+import weather from './routes/weather.js';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -45,6 +46,7 @@ app.use('/api/profile', profile);
 app.use('/api/quality', quality);
 app.use('/api/analytics', analytics);
 app.use('/api/reference-thresholds', reference);
+app.use('/api/weather', weather);
 app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 app.use((err, req, res, next) => {
   const status =

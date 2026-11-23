@@ -1,3 +1,4 @@
+SET client_encoding = 'UTF8';
 INSERT INTO roles(name,description) VALUES ('admin','Administración total'),('user','Registro y consulta') ON CONFLICT(name) DO NOTHING;
 INSERT INTO environmental_variables(code,name,category,unit,min_value,max_value,reference_value,reference_context) VALUES
 ('PM25','Partículas PM2.5','air','µg/m³',0,2000,NULL,'Los umbrales deben configurarse según norma y promediación'),

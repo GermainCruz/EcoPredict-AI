@@ -31,6 +31,7 @@ El `refreshToken` viaja en una cookie **httpOnly** (`eco_refresh`) para el clien
 | GET,POST | /alerts/rules | GET autenticado, POST admin | Reglas de alerta configurables |
 | PATCH,DELETE | /alerts/rules/:id | admin | Activar/desactivar o eliminar regla |
 | GET | /reports/pdf, /reports/docx, /reports/xlsx | Autenticado | Descargar reportes filtrables |
+| GET | /weather/:siteId | Autenticado | Clima en tiempo real y diagnóstico de dispersión (Open-Meteo) |
 | GET | /audit | admin | Hasta 200 acciones recientes |
 
 ## Mediciones

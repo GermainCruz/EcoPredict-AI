@@ -1,4 +1,15 @@
 import React, { useMemo, useState } from 'react';
+import {
+  Wind,
+  Droplets,
+  Thermometer,
+  CloudSun,
+  X,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  Compass,
+} from 'lucide-react';
 import { Heading, Notice, useRequest } from '../components/Shared';
 
 const W = 1000;
@@ -24,6 +35,14 @@ export default function MapPage() {
   const [variable, setVariable] = useState('all');
   const [mode, setMode] = useState('observed');
   const [hover, setHover] = useState(null);
+  const [selectedSite, setSelectedSite] = useState(null);
+
+  const {
+    data: weatherData,
+    loading: weatherLoading,
+    error: weatherError,
+    reload: reloadWeather,
+  } = useRequest(selectedSite ? `/weather/${selectedSite.id}` : null);
 
   const geo = (sites || []).filter((s) => s.latitude !== null && s.longitude !== null);
 
@@ -67,8 +86,7 @@ export default function MapPage() {
   const vMax = numeric.length ? Math.max(...numeric) : 1;
   const maxSamples = Math.max(1, ...geo.map((s) => values[s.id]?.samples || 1));
 
-  // P1 #18: umbral de referencia activo para la variable seleccionada. Se prioriza
-  // el umbral con valor máximo (el más restrictivo) para colorear por cumplimiento.
+  // Umbral de referencia activo para la variable seleccionada
   const refThreshold = useMemo(() => {
     if (!activeVar) return null;
     const matches = (refThresholds || []).filter((r) => Number(r.variable_id) === Number(activeVar.id));
@@ -80,9 +98,8 @@ export default function MapPage() {
     return withMin.length ? withMin[0] : null;
   }, [refThresholds, activeVar]);
 
-  const radius = (s) => 8 + (Math.sqrt((values[s.id]?.samples || 1) / maxSamples) * 14);
+  const radius = (s) => 8 + Math.sqrt((values[s.id]?.samples || 1) / maxSamples) * 14;
 
-  // Severidad respecto al umbral de referencia: ≤0.6 verde, 1.0 ámbar, ≥1.2 rojo.
   const severityT = (v) => {
     if (!refThreshold) return null;
     const maxV = refThreshold.max_value !== null && refThreshold.max_value !== undefined ? Number(refThreshold.max_value) : null;
@@ -109,7 +126,7 @@ export default function MapPage() {
     <>
       <Heading
         title="Mapa de estaciones"
-        description="Distribución geográfica de las estaciones de monitoreo con sus valores agregados por variable."
+        description="Distribución geográfica de las estaciones de monitoreo con sus valores agregados y clima en tiempo real."
       />
       <Notice error={error} />
 
@@ -150,12 +167,7 @@ export default function MapPage() {
             </div>
           </div>
           <div className="text-sm muted max-w-md">
-            {geo.length} de {sites?.length ?? 0} estaciones con coordenadas. El tamaño del círculo refleja el
-            número de muestras; el color,{' '}
-            {mode === 'reference'
-              ? 'el cumplimiento del umbral de referencia activo'
-              : 'el valor respecto al rango observado'}
-            .
+            {geo.length} de {sites?.length ?? 0} estaciones con coordenadas. Haz clic en una estación para consultar su clima y diagnóstico de dispersión atmosférica.
           </div>
         </div>
 
@@ -215,24 +227,45 @@ export default function MapPage() {
               {geo.map((s) => {
                 const cx = projection.px(s.longitude);
                 const cy = projection.py(s.latitude);
+                const isSelected = selectedSite?.id === s.id;
                 return (
                   <g
                     key={s.id}
-                    onMouseEnter={(e) => setHover({ s, x: cx, y: cy })}
+                    onClick={() => setSelectedSite(isSelected ? null : s)}
+                    onMouseEnter={() => setHover({ s, x: cx, y: cy })}
                     onMouseLeave={() => setHover(null)}
                     style={{ cursor: 'pointer' }}
                   >
+                    {isSelected && (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={radius(s) + 12}
+                        fill="none"
+                        stroke="#059669"
+                        strokeWidth="2.5"
+                        strokeDasharray="4 3"
+                        opacity="0.8"
+                      />
+                    )}
                     <circle cx={cx} cy={cy} r={radius(s) + 6} fill={fill(s)} opacity="0.15" />
                     <circle
                       cx={cx}
                       cy={cy}
                       r={radius(s)}
                       fill={fill(s)}
-                      stroke="#ffffff"
-                      strokeWidth="2"
-                      opacity={hover?.s.id === s.id ? 1 : 0.9}
+                      stroke={isSelected ? '#059669' : '#ffffff'}
+                      strokeWidth={isSelected ? '3' : '2'}
+                      opacity={hover?.s.id === s.id || isSelected ? 1 : 0.9}
                     />
-                    <text x={cx} y={cy - radius(s) - 6} textAnchor="middle" fontSize="12" fontWeight="600" fill="#18312b">
+                    <text
+                      x={cx}
+                      y={cy - radius(s) - 6}
+                      textAnchor="middle"
+                      fontSize="12"
+                      fontWeight={isSelected ? '700' : '600'}
+                      fill={isSelected ? '#065f46' : '#18312b'}
+                    >
                       {s.name}
                     </text>
                   </g>
@@ -262,33 +295,211 @@ export default function MapPage() {
                 {activeVar ? ` ${activeVar.unit}` : ''}
               </div>
               <div className="text-slate-300">Muestras: {values[hover.s.id]?.samples ?? 0}</div>
+              <div className="text-emerald-300 text-[10px] mt-0.5">Clic para ver clima en tiempo real</div>
             </div>
           )}
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-          {geo.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"
-              onMouseEnter={() => setHover({ s, x: projection.px(s.longitude), y: projection.py(s.latitude) })}
-              onMouseLeave={() => setHover(null)}
-            >
-              <div className="min-w-0">
-                <div className="font-semibold text-sm truncate text-ink">{s.name}</div>
-                <div className="muted text-xs">
-                  {Number(s.latitude).toFixed(4)}, {Number(s.longitude).toFixed(4)}
+        {/* Panel de Clima en Tiempo Real y Dispersión Atmosférica */}
+        {selectedSite && (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700">
+                  <CloudSun size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-ink">
+                      Condiciones Meteorológicas en Tiempo Real — {selectedSite.name}
+                    </h3>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Open-Meteo API
+                    </span>
+                  </div>
+                  <p className="text-xs muted">
+                    Coordenadas: {Number(selectedSite.latitude).toFixed(4)}, {Number(selectedSite.longitude).toFixed(4)}
+                  </p>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="font-bold text-sm">
-                  {values[s.id]?.value ?? '—'}
-                  {activeVar && <span className="muted font-normal text-xs"> {activeVar.unit}</span>}
-                </div>
-                <div className="muted text-xs">{values[s.id]?.samples ?? 0} muestras</div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={reloadWeather}
+                  disabled={weatherLoading}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs flex items-center gap-1.5 font-medium"
+                  title="Actualizar datos meteorológicos"
+                >
+                  <RefreshCw size={13} className={weatherLoading ? 'animate-spin' : ''} />
+                  <span>Actualizar</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSite(null)}
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+                  title="Cerrar panel"
+                >
+                  <X size={16} />
+                </button>
               </div>
             </div>
-          ))}
+
+            {weatherLoading && (
+              <div className="py-8 text-center text-sm muted flex items-center justify-center gap-2">
+                <RefreshCw size={16} className="animate-spin text-leaf" />
+                Consultando satélite y modelo meteorológico en Open-Meteo...
+              </div>
+            )}
+
+            {weatherError && <p className="error text-xs">{weatherError}</p>}
+
+            {weatherData && !weatherData.available && (
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-start gap-2">
+                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">{weatherData.message}</p>
+                  {weatherData.details && <p className="text-xs text-amber-700 mt-1">{weatherData.details}</p>}
+                </div>
+              </div>
+            )}
+
+            {weatherData?.available && weatherData.weather && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1 font-medium">
+                      <Thermometer size={14} className="text-rose-500" />
+                      <span>Temperatura</span>
+                    </div>
+                    <div className="text-xl font-extrabold text-ink">
+                      {weatherData.weather.temperature !== null ? `${weatherData.weather.temperature} °C` : '—'}
+                    </div>
+                    <div className="text-[11px] muted mt-0.5">
+                      Sensación: {weatherData.weather.apparent_temperature !== null ? `${weatherData.weather.apparent_temperature} °C` : '—'}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1 font-medium">
+                      <Droplets size={14} className="text-sky-500" />
+                      <span>Humedad Relativa</span>
+                    </div>
+                    <div className="text-xl font-extrabold text-ink">
+                      {weatherData.weather.relative_humidity !== null ? `${weatherData.weather.relative_humidity} %` : '—'}
+                    </div>
+                    <div className="text-[11px] muted mt-0.5">
+                      Precipitación: {weatherData.weather.precipitation ?? 0} mm
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1 font-medium">
+                      <Wind size={14} className="text-teal-600" />
+                      <span>Velocidad del Viento</span>
+                    </div>
+                    <div className="text-xl font-extrabold text-ink">
+                      {weatherData.weather.wind_speed !== null ? `${weatherData.weather.wind_speed} km/h` : '—'}
+                    </div>
+                    <div className="text-[11px] muted mt-0.5">
+                      Dirección: {weatherData.weather.wind_direction_cardinal} ({weatherData.weather.wind_direction}°)
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1 font-medium">
+                      <CloudSun size={14} className="text-amber-500" />
+                      <span>Estado del Cielo</span>
+                    </div>
+                    <div className="text-sm font-bold text-ink truncate mt-1">
+                      {weatherData.weather.weather_description}
+                    </div>
+                    <div className="text-[11px] text-emerald-700 font-medium mt-1">
+                      Enlace satelital activo
+                    </div>
+                  </div>
+                </div>
+
+                {weatherData.dispersion && (
+                  <div
+                    className={`p-4 rounded-xl border flex items-start gap-3 ${
+                      weatherData.dispersion.tone === 'success'
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                        : weatherData.dispersion.tone === 'warning'
+                        ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+                        : 'bg-sky-50/80 border-sky-200 text-sky-950'
+                    }`}
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {weatherData.dispersion.tone === 'success' ? (
+                        <CheckCircle2 size={18} className="text-emerald-600" />
+                      ) : weatherData.dispersion.tone === 'warning' ? (
+                        <AlertTriangle size={18} className="text-amber-600" />
+                      ) : (
+                        <Wind size={18} className="text-sky-600" />
+                      )}
+                    </div>
+                    <div className="text-xs">
+                      <div className="font-bold text-sm mb-0.5 flex items-center gap-2">
+                        <span>Diagnóstico de Dispersión Atmosférica:</span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            weatherData.dispersion.tone === 'success'
+                              ? 'bg-emerald-200/80 text-emerald-900'
+                              : weatherData.dispersion.tone === 'warning'
+                              ? 'bg-amber-200/80 text-amber-900'
+                              : 'bg-sky-200/80 text-sky-900'
+                          }`}
+                        >
+                          {weatherData.dispersion.label}
+                        </span>
+                      </div>
+                      <p className="leading-relaxed opacity-90">{weatherData.dispersion.diagnostic}</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
+          {geo.map((s) => {
+            const isSelected = selectedSite?.id === s.id;
+            return (
+              <div
+                key={s.id}
+                onClick={() => setSelectedSite(isSelected ? null : s)}
+                className={`flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition ${
+                  isSelected
+                    ? 'border-leaf bg-emerald-50/50 ring-1 ring-leaf'
+                    : 'border-slate-200 hover:border-leaf/60 hover:bg-slate-50/50'
+                }`}
+                onMouseEnter={() => setHover({ s, x: projection.px(s.longitude), y: projection.py(s.latitude) })}
+                onMouseLeave={() => setHover(null)}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-sm truncate text-ink">{s.name}</span>
+                    {isSelected && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                        Activa
+                      </span>
+                    )}
+                  </div>
+                  <div className="muted text-xs">
+                    {Number(s.latitude).toFixed(4)}, {Number(s.longitude).toFixed(4)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-sm">
+                    {values[s.id]?.value ?? '—'}
+                    {activeVar && <span className="muted font-normal text-xs"> {activeVar.unit}</span>}
+                  </div>
+                  <div className="text-xs text-leaf font-medium">Ver clima en vivo →</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </>
